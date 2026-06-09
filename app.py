@@ -121,10 +121,19 @@ def fetch_manual_macros(food_text):
 st.set_page_config(page_title="AI Nutrition Tracker", page_icon="🥗", layout="centered")
 st.title("🥗 Mein KI-Ernährungstracker")
 
+# Nährwert-Speicher für manuelle Eingabe initialisieren
 if 'manual_cal' not in st.session_state: st.session_state['manual_cal'] = 0
 if 'manual_pro' not in st.session_state: st.session_state['manual_pro'] = 0.0
 if 'manual_carb' not in st.session_state: st.session_state['manual_carb'] = 0.0
 if 'manual_fat' not in st.session_state: st.session_state['manual_fat'] = 0.0
+
+# NEU: Nährwert-Speicher für die Editierung nach dem Fotoscan initialisieren
+if 'edit_cal' not in st.session_state: st.session_state['edit_cal'] = 0
+if 'edit_pro' not in st.session_state: st.session_state['edit_pro'] = 0.0
+if 'edit_carb' not in st.session_state: st.session_state['edit_carb'] = 0.0
+if 'edit_fat' not in st.session_state: st.session_state['edit_fat'] = 0.0
+if 'edit_desc_val' not in st.session_state: st.session_state['edit_desc_val'] = ""
+if 'edit_ing_val' not in st.session_state: st.session_state['edit_ing_val'] = ""
 
 tab1, tab2 = st.tabs(["📥 Essen eintragen", "📊 Historie & Rückblick"])
 
@@ -146,23 +155,48 @@ with tab1:
                     result = analyze_food_image(img_bytes)
                     if result:
                         st.session_state['ki_result'] = result
+                        # Initialisiere die editierbaren Felder mit den KI-Ergebnissen
+                        st.session_state['edit_desc_val'] = result.get('description', '')
+                        st.session_state['edit_ing_val'] = result.get('ingredients', '')
+                        st.session_state['edit_cal'] = int(result.get('calories', 0))
+                        st.session_state['edit_pro'] = float(result.get('protein', 0.0))
+                        st.session_state['edit_carb'] = float(result.get('carbs', 0.0))
+                        st.session_state['edit_fat'] = float(result.get('fat', 0.0))
                         st.success("Analyse fertig! Du kannst die Werte unten jetzt prüfen und anpassen.")
 
             if 'ki_result' in st.session_state:
-                res = st.session_state['ki_result']
                 st.markdown("---")
                 st.subheader("📋 KI-Vorschlag (Hier anpassen):")
                 
-                edit_desc = st.text_input("Gericht Name / Beschreibung", value=res.get('description', ''))
-                edit_ing = st.text_area("Zutaten & Gramm-Angaben", value=res.get('ingredients', ''))
+                # Werte kommen nun aus dem Session State, damit sie dynamisch überschrieben werden können
+                edit_desc = st.text_input("Gericht Name / Beschreibung", value=st.session_state['edit_desc_val'])
+                edit_ing = st.text_area("Zutaten & Gramm-Angaben", value=st.session_state['edit_ing_val'])
+                
+                # NEU: Button zur Neuberechnung nach Textänderung im Foto-Tab
+                if st.button("✨ Werte basierend auf Text neu berechnen"):
+                    if edit_ing:
+                        with st.spinner("Nährwerte werden an den neuen Text angepasst..."):
+                            macros = fetch_manual_macros(edit_ing)
+                            if macros:
+                                st.session_state['edit_cal'] = int(macros.get('calories', 0))
+                                st.session_state['edit_pro'] = float(macros.get('protein', 0.0))
+                                st.session_state['edit_carb'] = float(macros.get('carbs', 0.0))
+                                st.session_state['edit_fat'] = float(macros.get('fat', 0.0))
+                                # Textfeld-Inhalt merken
+                                st.session_state['edit_ing_val'] = edit_ing
+                                st.session_state['edit_desc_val'] = edit_desc
+                                st.success("Nährwerte wurden erfolgreich angepasst!")
+                                st.rerun()
+                    else:
+                        st.warning("Das Zutatenfeld darf nicht leer sein!")
                 
                 col_e1, col_e2 = st.columns(2)
                 with col_e1:
-                    edit_cal = st.number_input("Kalorien (kcal)", min_value=0, value=int(res.get('calories', 0)), step=1)
-                    edit_pro = st.number_input("Eiweiß (g)", min_value=0.0, value=float(res.get('protein', 0)), step=0.1)
+                    edit_cal = st.number_input("Kalorien (kcal)", min_value=0, value=st.session_state['edit_cal'], step=1)
+                    edit_pro = st.number_input("Eiweiß (g)", min_value=0.0, value=st.session_state['edit_pro'], step=0.1)
                 with col_e2:
-                    edit_carb = st.number_input("Kohlenhydrate (g)", min_value=0.0, value=float(res.get('carbs', 0)), step=0.1)
-                    edit_fat = st.number_input("Fett (g)", min_value=0.0, value=float(res.get('fat', 0)), step=0.1)
+                    edit_carb = st.number_input("Kohlenhydrate (g)", min_value=0.0, value=st.session_state['edit_carb'], step=0.1)
+                    edit_fat = st.number_input("Fett (g)", min_value=0.0, value=st.session_state['edit_fat'], step=0.1)
                 
                 if st.button("💾 Bestätigen & in Historie speichern"):
                     full_description = f"{edit_desc} ({edit_ing})" if edit_ing else edit_desc
