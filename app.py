@@ -84,15 +84,13 @@ def analyze_food_image(image_bytes):
             ]
         )
         text = response.text.strip()
-        if "
-```" in text:
+        if "```" in text:
             text = text.replace("```json", "").replace("```", "").strip()
         return json.loads(text)
     except Exception as e:
         st.error(f"Fehler bei der KI-Analyse: {e}")
         return None
 
-# NEU: Funktion für die manuelle Text-Abfrage der Nährwerte
 def fetch_manual_macros(food_text):
     prompt = f"""
     Berechne oder schätze die Nährwerte für folgende Eingabe: "{food_text}". 
@@ -112,8 +110,7 @@ def fetch_manual_macros(food_text):
             contents=prompt
         )
         text = response.text.strip()
-        if "
-```" in text:
+        if "```" in text:
             text = text.replace("```json", "").replace("```", "").strip()
         return json.loads(text)
     except Exception as e:
@@ -124,7 +121,6 @@ def fetch_manual_macros(food_text):
 st.set_page_config(page_title="AI Nutrition Tracker", page_icon="🥗", layout="centered")
 st.title("🥗 Mein KI-Ernährungstracker")
 
-# Session States initialisieren, damit die Werte bei manueller Eingabe erhalten bleiben
 if 'manual_cal' not in st.session_state: st.session_state['manual_cal'] = 0
 if 'manual_pro' not in st.session_state: st.session_state['manual_pro'] = 0.0
 if 'manual_carb' not in st.session_state: st.session_state['manual_carb'] = 0.0
@@ -179,13 +175,11 @@ with tab1:
     else:  # ✍️ Manuell eingeben
         st.subheader("Manuelle Werte eingeben")
         
-        # Eingabefeld für das Lebensmittel + Menge
         manual_desc = st.text_input(
             "Was hast du gegessen? (Bitte mit Menge)", 
             placeholder="z.B. 150g Putenhack, 60g Haferkleie, 250g Magerquark..."
         )
         
-        # NEU: Button, um die Nährwerte sofort via KI abzurufen
         if st.button("✨ Nährwerte automatisch berechnen"):
             if manual_desc:
                 with st.spinner("Berechne Nährwerte..."):
@@ -199,7 +193,6 @@ with tab1:
             else:
                 st.warning("Bitte gib zuerst ein Lebensmittel und eine Menge ein!")
         
-        # Die Zahlenfelder spiegeln den Session State wider und erlauben manuelle Korrekturen
         col_m1, col_m2 = st.columns(2)
         with col_m1:
             manual_cal = st.number_input("Kalorien (kcal)", min_value=0, value=st.session_state['manual_cal'], step=1)
@@ -215,7 +208,6 @@ with tab1:
                 save_meal(meal_type, manual_desc, int(manual_cal), round(manual_pro, 1), round(manual_carb, 1), round(manual_fat, 1))
                 st.success(f"'{manual_desc}' wurde erfolgreich gespeichert!")
                 st.toast("Mahlzeit gespeichert!", icon="💾")
-                # Nach dem Speichern die Werte im Speicher wieder zurücksetzen
                 st.session_state['manual_cal'] = 0
                 st.session_state['manual_pro'] = 0.0
                 st.session_state['manual_carb'] = 0.0
