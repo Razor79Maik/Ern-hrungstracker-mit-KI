@@ -4,6 +4,7 @@ import pandas as pd
 from datetime import datetime
 from google import genai
 from google.genai import types
+import json
 
 # --- 1. DATENBANK INITIALISIEREN ---
 def init_db():
@@ -43,45 +44,30 @@ def get_history():
     return df
 
 # --- 2. GEMINI API SETUP ---
-# Holt sich den API-Key sicher aus den Streamlit Secrets
 api_key = st.secrets["GEMINI_API_KEY"]
 client = genai.Client(api_key=api_key)
 
 def analyze_food_image(image_bytes):
-    prompt = """
-    Analysiere dieses Bild von Essen. Schätze die Portionsgrößen und berechne die Nährwerte.
-    Antworte AUSSCHLIESSLICH im folgenden JSON-Format, ohne Markdown-Formatierung (keine ```json Blöcke):
-    {
-        "description": "Kurze Beschreibung der erkannten Komponenten des Gerichts",
-        "calories": 450,
-        "protein": 35.5,
-        "carbs": 40.0,
-        "fat": 12.5
-    }
-    Achte auf eine möglichst realistische Einschätzung.
-    """
+    prompt = "Analysiere dieses Bild von Essen. Schätze die Portionsgrößen und berechne die Nährwerte. Antworte AUSSCHLIESSLICH im folgenden JSON-Format ohne Markdown: {\"description\": \"Kurze Beschreibung\", \"calories\": 450, \"protein\": 35.5, \"carbs\": 40.0, \"fat\": 12.5}"
     
     try:
         response = client.models.generate_content(
             model='gemini-2.5-flash',
             contents=[
-                types.Part.from_bytes(
-                    data=image_bytes,
-                    mime_type='image/jpeg',
-                ),
+                types.Part.from_bytes(data=image_bytes, mime_type='image/jpeg'),
                 prompt
             ]
         )
-        text = response.text.replace("
-```json", "").replace("```", "").strip()
-        return eval(text)
+        text = response.text.strip()
+        if "```" in text:
+            text = text.replace("```json", "").replace("```", "").strip()
+        return json.loads(text)
     except Exception as e:
         st.error(f"Fehler bei der KI-Analyse: {e}")
         return None
 
 # --- 3. STREAMLIT APPLIKATION ---
 st.set_page_config(page_title="AI Nutrition Tracker", page_icon="🥗", layout="centered")
-
 st.title("🥗 Mein KI-Ernährungstracker")
 
 tab1, tab2 = st.tabs(["📸 Neues Essen erfassen", "📊 Historie & Rückblick"])
@@ -89,7 +75,6 @@ tab1, tab2 = st.tabs(["📸 Neues Essen erfassen", "📊 Historie & Rückblick"]
 with tab1:
     st.header("Mahlzeit scannen")
     meal_type = st.selectbox("Kategorie", ["Frühstück", "Mittagessen", "Abendessen", "Snack/Shake"])
-    
     img_file = st.file_uploader("Mach ein Foto oder lade eins hoch", type=["jpg", "jpeg", "png"])
     
     if img_file is not None:
@@ -99,24 +84,22 @@ with tab1:
         if st.button("🔥 Essen analysieren & speichern"):
             with st.spinner("Gemini analysiert deinen Teller..."):
                 result = analyze_food_image(img_bytes)
-                
                 if result:
                     st.success("Erfolgreich analysiert!")
-                    st.subheader(result['description'])
+                    st.subheader(result.get('description', 'Mahlzeit'))
                     
                     col1, col2, col3, col4 = st.columns(4)
-                    col1.metric("Kalorien", f"{result['calories']} kcal")
-                    col2.metric("Proteine", f"{result['protein']}g")
-                    col3.metric("Carbs", f"{result['carbs']}g")
-                    col4.metric("Fett", f"{result['fat']}g")
+                    col1.metric("Kalorien", f"{result.get('calories', 0)} kcal")
+                    col2.metric("Proteine", f"{result.get('protein', 0)}g")
+                    col3.metric("Carbs", f"{result.get('carbs', 0)}g")
+                    col4.metric("Fett", f"{result.get('fat', 0)}g")
                     
-                    save_meal(meal_type, result['description'], result['calories'], result['protein'], result['carbs'], result['fat'])
+                    save_meal(meal_type, result.get('description', 'Mahlzeit'), result.get('calories', 0), result.get('protein', 0), result.get('carbs', 0), result.get('fat', 0))
                     st.toast("Mahlzeit gespeichert!", icon="💾")
 
 with tab2:
     st.header("Dein Rückblick")
     df = get_history()
-    
     if df.empty:
         st.info("Du hast bisher noch keine Mahlzeiten eingetragen.")
     else:
@@ -140,4 +123,3 @@ with tab2:
             },
             hide_index=True, use_container_width=True
         )
-
