@@ -1,7 +1,7 @@
 import streamlit as st
 import sqlite3
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, date
 from google import genai
 from google.genai import types
 import json
@@ -111,7 +111,6 @@ with tab1:
             st.image(img_file, caption="Dein Essen", use_container_width=True)
             img_bytes = img_file.read()
             
-            # Button zur Analyse
             if st.button("🔍 Foto von KI analysieren lassen"):
                 with st.spinner("Gemini analysiert deinen Teller und schätzt die Zutaten..."):
                     result = analyze_food_image(img_bytes)
@@ -119,13 +118,11 @@ with tab1:
                         st.session_state['ki_result'] = result
                         st.success("Analyse fertig! Du kannst die Werte unten jetzt prüfen und anpassen.")
 
-            # Wenn ein Analyseergebnis im Zwischenspeicher liegt, zeigen wir die editierbaren Felder an
             if 'ki_result' in st.session_state:
                 res = st.session_state['ki_result']
                 st.markdown("---")
                 st.subheader("📋 KI-Vorschlag (Hier anpassen, falls nötig):")
                 
-                # Eingabefelder gefüllt mit den KI-Werten zur manuellen Korrektur
                 edit_desc = st.text_input("Gericht Name / Beschreibung", value=res.get('description', ''))
                 edit_ing = st.text_area("Erkannte Zutaten & Gramm-Angaben", value=res.get('ingredients', ''))
                 
@@ -137,15 +134,11 @@ with tab1:
                     edit_carb = st.number_input("Kohlenhydrate (g)", min_value=0.0, value=float(res.get('carbs', 0)), step=0.1)
                     edit_fat = st.number_input("Fett (g)", min_value=0.0, value=float(res.get('fat', 0)), step=0.1)
                 
-                # Finale Speicherung der (evtl. korrigierten) Werte
                 if st.button("💾 Bestätigen & in Historie speichern"):
-                    # Wir hängen die Zutatenliste für den Rückblick elegant an die Beschreibung an
                     full_description = f"{edit_desc} ({edit_ing})" if edit_ing else edit_desc
-                    
                     save_meal(meal_type, full_description, int(edit_cal), round(edit_pro, 1), round(edit_carb, 1), round(edit_fat, 1))
                     st.success("Mahlzeit erfolgreich gespeichert!")
                     st.toast("Gespeichert!", icon="💾")
-                    # Zwischenspeicher leeren für das nächste Bild
                     del st.session_state['ki_result']
                     st.rerun()
                         
@@ -172,29 +165,40 @@ with tab1:
 with tab2:
     st.header("Dein Rückblick")
     df = get_history()
+    
     if df.empty:
         st.info("Du hast bisher noch keine Mahlzeiten eingetragen.")
     else:
-        today_str = datetime.now().strftime("%Y-%m-%d")
-        df_today = df[df['date'] == today_str]
+        # NEU: Datums-Auswahl für den Rückblick
+        st.subheader("📅 Tag auswählen")
+        selected_date = st.date_input("Welchen Tag möchtest du sehen?", value=date.today())
+        selected_date_str = selected_date.strftime("%Y-%m-%d")
         
-        st.subheader("Heute bereits konsumiert:")
+        # Filtern der Daten nach dem ausgewählten Tag
+        df_selected = df[df['date'] == selected_date_str]
+        
+        st.markdown(f"### Konsumiert am {selected_date.strftime('%d.%m.%Y')}:")
+        
         c1, c2, c3, c4 = st.columns(4)
-        c1.metric("Gesamt Kalorien", f"{int(df_today['calories'].sum())} kcal")
-        c2.metric("Protein", f"{round(df_today['protein'].sum(), 1)}g")
-        c3.metric("Carbs", f"{round(df_today['carbs'].sum(), 1)}g")
-        c4.metric("Fett", f"{round(df_today['fat'].sum(), 1)}g")
+        c1.metric("Gesamt Kalorien", f"{int(df_selected['calories'].sum())} kcal")
+        c2.metric("Protein", f"{round(df_selected['protein'].sum(), 1)}g")
+        c3.metric("Carbs", f"{round(df_selected['carbs'].sum(), 1)}g")
+        c4.metric("Fett", f"{round(df_selected['fat'].sum(), 1)}g")
         
         st.markdown("---")
-        st.subheader("Alle gespeicherten Mahlzeiten")
-        st.dataframe(
-            df[['date', 'meal_type', 'description', 'calories', 'protein', 'carbs', 'fat']],
-            column_config={
-                "date": "Datum", "meal_type": "Typ", "description": "Was gab es? (Zutaten)",
-                "calories": "Kcal", "protein": "Eiweiß (g)", "carbs": "Kohlenhydrate (g)", "fat": "Fett (g)"
-            },
-            hide_index=True, use_container_width=True
-        )
+        st.subheader("Mahlzeiten an diesem Tag")
+        
+        if df_selected.empty:
+            st.info("An diesem Tag wurden keine Mahlzeiten eingetragen.")
+        else:
+            st.dataframe(
+                df_selected[['meal_type', 'description', 'calories', 'protein', 'carbs', 'fat']],
+                column_config={
+                    "meal_type": "Typ", "description": "Was gab es? (Zutaten)",
+                    "calories": "Kcal", "protein": "Eiweiß (g)", "carbs": "Kohlenhydrate (g)", "fat": "Fett (g)"
+                },
+                hide_index=True, use_container_width=True
+            )
         
         st.markdown("---")
         st.subheader("⚙️ Daten verwalten")
