@@ -121,13 +121,12 @@ def fetch_manual_macros(food_text):
 st.set_page_config(page_title="AI Nutrition Tracker", page_icon="🥗", layout="centered")
 st.title("🥗 Mein KI-Ernährungstracker")
 
-# Nährwert-Speicher für manuelle Eingabe initialisieren
+# Nährwert-Speicher initialisieren
 if 'manual_cal' not in st.session_state: st.session_state['manual_cal'] = 0
 if 'manual_pro' not in st.session_state: st.session_state['manual_pro'] = 0.0
 if 'manual_carb' not in st.session_state: st.session_state['manual_carb'] = 0.0
 if 'manual_fat' not in st.session_state: st.session_state['manual_fat'] = 0.0
 
-# NEU: Nährwert-Speicher für die Editierung nach dem Fotoscan initialisieren
 if 'edit_cal' not in st.session_state: st.session_state['edit_cal'] = 0
 if 'edit_pro' not in st.session_state: st.session_state['edit_pro'] = 0.0
 if 'edit_carb' not in st.session_state: st.session_state['edit_carb'] = 0.0
@@ -155,7 +154,6 @@ with tab1:
                     result = analyze_food_image(img_bytes)
                     if result:
                         st.session_state['ki_result'] = result
-                        # Initialisiere die editierbaren Felder mit den KI-Ergebnissen
                         st.session_state['edit_desc_val'] = result.get('description', '')
                         st.session_state['edit_ing_val'] = result.get('ingredients', '')
                         st.session_state['edit_cal'] = int(result.get('calories', 0))
@@ -168,11 +166,9 @@ with tab1:
                 st.markdown("---")
                 st.subheader("📋 KI-Vorschlag (Hier anpassen):")
                 
-                # Werte kommen nun aus dem Session State, damit sie dynamisch überschrieben werden können
                 edit_desc = st.text_input("Gericht Name / Beschreibung", value=st.session_state['edit_desc_val'])
                 edit_ing = st.text_area("Zutaten & Gramm-Angaben", value=st.session_state['edit_ing_val'])
                 
-                # NEU: Button zur Neuberechnung nach Textänderung im Foto-Tab
                 if st.button("✨ Werte basierend auf Text neu berechnen"):
                     if edit_ing:
                         with st.spinner("Nährwerte werden an den neuen Text angepasst..."):
@@ -182,7 +178,6 @@ with tab1:
                                 st.session_state['edit_pro'] = float(macros.get('protein', 0.0))
                                 st.session_state['edit_carb'] = float(macros.get('carbs', 0.0))
                                 st.session_state['edit_fat'] = float(macros.get('fat', 0.0))
-                                # Textfeld-Inhalt merken
                                 st.session_state['edit_ing_val'] = edit_ing
                                 st.session_state['edit_desc_val'] = edit_desc
                                 st.success("Nährwerte wurden erfolgreich angepasst!")
@@ -263,11 +258,33 @@ with tab2:
         
         st.markdown(f"### Konsumiert am {selected_date.strftime('%d.%m.%Y')}:")
         
+        # Werte für den ausgewählten Tag berechnen
+        total_calories = int(df_selected['calories'].sum())
+        total_protein = round(df_selected['protein'].sum(), 1)
+        total_carbs = round(df_selected['carbs'].sum(), 1)
+        total_fat = round(df_selected['fat'].sum(), 1)
+        
         c1, c2, c3, c4 = st.columns(4)
-        c1.metric("Gesamt Kalorien", f"{int(df_selected['calories'].sum())} kcal")
-        c2.metric("Protein", f"{round(df_selected['protein'].sum(), 1)}g")
-        c3.metric("Carbs", f"{round(df_selected['carbs'].sum(), 1)}g")
-        c4.metric("Fett", f"{round(df_selected['fat'].sum(), 1)}g")
+        c1.metric("Gesamt Kalorien", f"{total_calories} kcal")
+        c2.metric("Protein", f"{total_protein}g")
+        c3.metric("Carbs", f"{total_carbs}g")
+        c4.metric("Fett", f"{total_fat}g")
+        
+        # --- NEU: PROTEIN TARGET COMPONENT (180g) ---
+        st.markdown("---")
+        st.subheader("🎯 Dein Eiweiß-Ziel (180g)")
+        
+        protein_goal = 180.0
+        # Fortschritt berechnen (maximal 100% für den Balken)
+        progress_percentage = min(total_protein / protein_goal, 1.0)
+        
+        st.progress(progress_percentage)
+        
+        if total_protein >= protein_goal:
+            st.success(f"🚀 Ziel erreicht! Du hast dein Eiweiß-Ziel mit {total_protein}g vollständig gedeckt. Stark!")
+        else:
+            missing_protein = round(protein_goal - total_protein, 1)
+            st.info(f"💪 Du hast heute {total_protein}g Eiweiß geschafft. Es fehlen noch genau **{missing_protein}g**, um deine 180g vollzumachen!")
         
         st.markdown("---")
         st.subheader("Mahlzeiten an diesem Tag")
