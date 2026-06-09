@@ -43,6 +43,20 @@ def get_history():
     conn.close()
     return df
 
+def delete_all_history():
+    conn = sqlite3.connect("nutrition_tracker.db")
+    c = conn.cursor()
+    c.execute("DELETE FROM meals")
+    conn.commit()
+    conn.close()
+
+def delete_last_entry():
+    conn = sqlite3.connect("nutrition_tracker.db")
+    c = conn.cursor()
+    c.execute("DELETE FROM meals WHERE id = (SELECT MAX(id) FROM meals)")
+    conn.commit()
+    conn.close()
+
 # --- 2. GEMINI API SETUP ---
 api_key = st.secrets["GEMINI_API_KEY"]
 client = genai.Client(api_key=api_key)
@@ -70,32 +84,57 @@ def analyze_food_image(image_bytes):
 st.set_page_config(page_title="AI Nutrition Tracker", page_icon="🥗", layout="centered")
 st.title("🥗 Mein KI-Ernährungstracker")
 
-tab1, tab2 = st.tabs(["📸 Neues Essen erfassen", "📊 Historie & Rückblick"])
+tab1, tab2 = st.tabs(["📥 Essen eintragen", "📊 Historie & Rückblick"])
 
 with tab1:
-    st.header("Mahlzeit scannen")
+    st.header("Mahlzeit erfassen")
     meal_type = st.selectbox("Kategorie", ["Frühstück", "Mittagessen", "Abendessen", "Snack/Shake"])
-    img_file = st.file_uploader("Mach ein Foto oder lade eins hoch", type=["jpg", "jpeg", "png"])
     
-    if img_file is not None:
-        st.image(img_file, caption="Dein Essen", use_container_width=True)
-        img_bytes = img_file.read()
+    # Auswahlmethode (Foto vs. Manuell)
+    input_method = st.radio("Methode wählen:", ["📸 Foto scannen", "✍️ Manuell eingeben"], horizontal=True)
+    
+    if input_method == "📸 Foto scannen":
+        img_file = st.file_uploader("Mach ein Foto oder lade eins hoch", type=["jpg", "jpeg", "png"])
         
-        if st.button("🔥 Essen analysieren & speichern"):
-            with st.spinner("Gemini analysiert deinen Teller..."):
-                result = analyze_food_image(img_bytes)
-                if result:
-                    st.success("Erfolgreich analysiert!")
-                    st.subheader(result.get('description', 'Mahlzeit'))
-                    
-                    col1, col2, col3, col4 = st.columns(4)
-                    col1.metric("Kalorien", f"{result.get('calories', 0)} kcal")
-                    col2.metric("Proteine", f"{result.get('protein', 0)}g")
-                    col3.metric("Carbs", f"{result.get('carbs', 0)}g")
-                    col4.metric("Fett", f"{result.get('fat', 0)}g")
-                    
-                    save_meal(meal_type, result.get('description', 'Mahlzeit'), result.get('calories', 0), result.get('protein', 0), result.get('carbs', 0), result.get('fat', 0))
-                    st.toast("Mahlzeit gespeichert!", icon="💾")
+        if img_file is not None:
+            st.image(img_file, caption="Dein Essen", use_container_width=True)
+            img_bytes = img_file.read()
+            
+            if st.button("🔥 Essen analysieren & speichern"):
+                with st.spinner("Gemini analysiert deinen Teller..."):
+                    result = analyze_food_image(img_bytes)
+                    if result:
+                        st.success("Erfolgreich analysiert!")
+                        st.subheader(result.get('description', 'Mahlzeit'))
+                        
+                        col1, col2, col3, col4 = st.columns(4)
+                        col1.metric("Kalorien", f"{result.get('calories', 0)} kcal")
+                        col2.metric("Proteine", f"{result.get('protein', 0)}g")
+                        col3.metric("Carbs", f"{result.get('carbs', 0)}g")
+                        col4.metric("Fett", f"{result.get('fat', 0)}g")
+                        
+                        save_meal(meal_type, result.get('description', 'Mahlzeit'), result.get('calories', 0), result.get('protein', 0), result.get('carbs', 0), result.get('fat', 0))
+                        st.toast("Mahlzeit gespeichert!", icon="💾")
+                        
+    else:  # ✍️ Manuell eingeben
+        st.subheader("Manuelle Werte eingeben")
+        manual_desc = st.text_input("Was hast du gegessen?", placeholder="z.B. Whey Shake, Quark mit Beeren, Rumpsteak...")
+        
+        col_m1, col_m2 = st.columns(2)
+        with col_m1:
+            manual_cal = st.number_input("Kalorien (kcal)", min_value=0, value=0, step=1)
+            manual_pro = st.number_input("Eiweiß (g)", min_value=0.0, value=0.0, step=0.1)
+        with col_m2:
+            manual_carb = st.number_input("Kohlenhydrate (g)", min_value=0.0, value=0.0, step=0.1)
+            manual_fat = st.number_input("Fett (g)", min_value=0.0, value=0.0, step=0.1)
+            
+        if st.button("💾 Manuelle Mahlzeit speichern"):
+            if not manual_desc:
+                st.warning("Bitte gib eine kurze Beschreibung ein, damit du weißt, was es war!")
+            else:
+                save_meal(meal_type, manual_desc, int(manual_cal), round(manual_pro, 1), round(manual_carb, 1), round(manual_fat, 1))
+                st.success(f"'{manual_desc}' wurde erfolgreich gespeichert!")
+                st.toast("Mahlzeit gespeichert!", icon="💾")
 
 with tab2:
     st.header("Dein Rückblick")
@@ -123,3 +162,20 @@ with tab2:
             },
             hide_index=True, use_container_width=True
         )
+        
+        st.markdown("---")
+        st.subheader("⚙️ Daten verwalten")
+        
+        col_del1, col_del2 = st.columns(2)
+        with col_del1:
+            if st.button("🗑️ Letzten Eintrag löschen"):
+                delete_last_entry()
+                st.success("Der letzte Eintrag wurde gelöscht!")
+                st.rerun()
+                
+        with col_del2:
+            if st.checkbox("Ich möchte wirklich ALLE Daten löschen"):
+                if st.button("🚨 Komplette Historie löschen"):
+                    delete_all_history()
+                    st.success("Alle Daten wurden erfolgreich gelöscht!")
+                    st.rerun()
