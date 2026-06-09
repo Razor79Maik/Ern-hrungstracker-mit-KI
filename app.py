@@ -62,7 +62,19 @@ api_key = st.secrets["GEMINI_API_KEY"]
 client = genai.Client(api_key=api_key)
 
 def analyze_food_image(image_bytes):
-    prompt = "Analysiere dieses Bild von Essen. Schätze die Portionsgrößen und berechne die Nährwerte. Antworte AUSSCHLIESSLICH im folgenden JSON-Format ohne Markdown: {\"description\": \"Kurze Beschreibung\", \"calories\": 450, \"protein\": 35.5, \"carbs\": 40.0, \"fat\": 12.5}"
+    prompt = """
+    Analysiere dieses Bild von Essen. Schätze die einzelnen Zutaten mit Gramm-Angaben, Portionsgrößen und berechne die Nährwerte.
+    Antworte AUSSCHLIESSLICH im folgenden JSON-Format ohne Markdown (keine ```json Blöcke):
+    {
+        "description": "Kurze Zusammenfassung (z.B. Körnerbrötchen mit Lachs)",
+        "ingredients": "z.B. 80g Körnerbrötchen, 60g Räucherlachs, 5g Dill, 10g Butter",
+        "calories": 450,
+        "protein": 35.5,
+        "carbs": 40.0,
+        "fat": 12.5
+    }
+    Achte auf eine realistische Schätzung für einen Sportler.
+    """
     
     try:
         response = client.models.generate_content(
@@ -90,7 +102,6 @@ with tab1:
     st.header("Mahlzeit erfassen")
     meal_type = st.selectbox("Kategorie", ["Frühstück", "Mittagessen", "Abendessen", "Snack/Shake"])
     
-    # Auswahlmethode (Foto vs. Manuell)
     input_method = st.radio("Methode wählen:", ["📸 Foto scannen", "✍️ Manuell eingeben"], horizontal=True)
     
     if input_method == "📸 Foto scannen":
@@ -100,25 +111,47 @@ with tab1:
             st.image(img_file, caption="Dein Essen", use_container_width=True)
             img_bytes = img_file.read()
             
-            if st.button("🔥 Essen analysieren & speichern"):
-                with st.spinner("Gemini analysiert deinen Teller..."):
+            # Button zur Analyse
+            if st.button("🔍 Foto von KI analysieren lassen"):
+                with st.spinner("Gemini analysiert deinen Teller und schätzt die Zutaten..."):
                     result = analyze_food_image(img_bytes)
                     if result:
-                        st.success("Erfolgreich analysiert!")
-                        st.subheader(result.get('description', 'Mahlzeit'))
-                        
-                        col1, col2, col3, col4 = st.columns(4)
-                        col1.metric("Kalorien", f"{result.get('calories', 0)} kcal")
-                        col2.metric("Proteine", f"{result.get('protein', 0)}g")
-                        col3.metric("Carbs", f"{result.get('carbs', 0)}g")
-                        col4.metric("Fett", f"{result.get('fat', 0)}g")
-                        
-                        save_meal(meal_type, result.get('description', 'Mahlzeit'), result.get('calories', 0), result.get('protein', 0), result.get('carbs', 0), result.get('fat', 0))
-                        st.toast("Mahlzeit gespeichert!", icon="💾")
+                        st.session_state['ki_result'] = result
+                        st.success("Analyse fertig! Du kannst die Werte unten jetzt prüfen und anpassen.")
+
+            # Wenn ein Analyseergebnis im Zwischenspeicher liegt, zeigen wir die editierbaren Felder an
+            if 'ki_result' in st.session_state:
+                res = st.session_state['ki_result']
+                st.markdown("---")
+                st.subheader("📋 KI-Vorschlag (Hier anpassen, falls nötig):")
+                
+                # Eingabefelder gefüllt mit den KI-Werten zur manuellen Korrektur
+                edit_desc = st.text_input("Gericht Name / Beschreibung", value=res.get('description', ''))
+                edit_ing = st.text_area("Erkannte Zutaten & Gramm-Angaben", value=res.get('ingredients', ''))
+                
+                col_e1, col_e2 = st.columns(2)
+                with col_e1:
+                    edit_cal = st.number_input("Kalorien (kcal)", min_value=0, value=int(res.get('calories', 0)), step=1)
+                    edit_pro = st.number_input("Eiweiß (g)", min_value=0.0, value=float(res.get('protein', 0)), step=0.1)
+                with col_e2:
+                    edit_carb = st.number_input("Kohlenhydrate (g)", min_value=0.0, value=float(res.get('carbs', 0)), step=0.1)
+                    edit_fat = st.number_input("Fett (g)", min_value=0.0, value=float(res.get('fat', 0)), step=0.1)
+                
+                # Finale Speicherung der (evtl. korrigierten) Werte
+                if st.button("💾 Bestätigen & in Historie speichern"):
+                    # Wir hängen die Zutatenliste für den Rückblick elegant an die Beschreibung an
+                    full_description = f"{edit_desc} ({edit_ing})" if edit_ing else edit_desc
+                    
+                    save_meal(meal_type, full_description, int(edit_cal), round(edit_pro, 1), round(edit_carb, 1), round(edit_fat, 1))
+                    st.success("Mahlzeit erfolgreich gespeichert!")
+                    st.toast("Gespeichert!", icon="💾")
+                    # Zwischenspeicher leeren für das nächste Bild
+                    del st.session_state['ki_result']
+                    st.rerun()
                         
     else:  # ✍️ Manuell eingeben
         st.subheader("Manuelle Werte eingeben")
-        manual_desc = st.text_input("Was hast du gegessen?", placeholder="z.B. Whey Shake, Quark mit Beeren, Rumpsteak...")
+        manual_desc = st.text_input("Was hast du gegessen?", placeholder="z.B. Whey Shake, Quark mit Beeren...")
         
         col_m1, col_m2 = st.columns(2)
         with col_m1:
@@ -130,7 +163,7 @@ with tab1:
             
         if st.button("💾 Manuelle Mahlzeit speichern"):
             if not manual_desc:
-                st.warning("Bitte gib eine kurze Beschreibung ein, damit du weißt, was es war!")
+                st.warning("Bitte gib eine kurze Beschreibung ein!")
             else:
                 save_meal(meal_type, manual_desc, int(manual_cal), round(manual_pro, 1), round(manual_carb, 1), round(manual_fat, 1))
                 st.success(f"'{manual_desc}' wurde erfolgreich gespeichert!")
@@ -157,7 +190,7 @@ with tab2:
         st.dataframe(
             df[['date', 'meal_type', 'description', 'calories', 'protein', 'carbs', 'fat']],
             column_config={
-                "date": "Datum", "meal_type": "Typ", "description": "Was gab es?",
+                "date": "Datum", "meal_type": "Typ", "description": "Was gab es? (Zutaten)",
                 "calories": "Kcal", "protein": "Eiweiß (g)", "carbs": "Kohlenhydrate (g)", "fat": "Fett (g)"
             },
             hide_index=True, use_container_width=True
