@@ -58,7 +58,9 @@ def analyze_food_image(image_bytes):
         "carbs": 40.0,
         "fat": 12.5
     }
-    Achte auf eine möglichst realistische Einschätzung.
+            text = response.text.replace("```json", "").replace("```", "").strip()
+        return eval(text)
+        
     """
     
     try:
